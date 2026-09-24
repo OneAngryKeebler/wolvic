@@ -2107,7 +2107,7 @@ BrowserWorld::CreateSkyBox(const std::string& aBasePath, const std::string& aExt
     }
     return;
   }
-#if defined(OCULUSVR) || defined(PICOXR) || defined(PFDMXR)
+#if defined(OCULUSVR) || defined(PICOXR) || defined(PFDMXR) || defined(STEAM)
   bool usesSRGB = true;
 #else
   bool usesSRGB = false;

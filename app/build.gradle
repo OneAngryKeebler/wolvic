@@ -302,6 +302,17 @@ android {
             }
         }
 
+        steam {
+            // Valve Steam Frame (SteamVR OpenXR runtime under Lepton)
+            dimension = "platform"
+            externalNativeBuild {
+                cmake {
+                    cppFlags " -DSTEAM -DOPENXR -I" + file("src/openxr/cpp").absolutePath
+                    arguments "-DSTEAM=ON", "-DOPENXR=ON"
+                }
+            }
+        }
+
         aosp {
             dimension = "platform"
             targetSdk = 29
@@ -520,6 +531,15 @@ android {
             manifest.srcFile "src/aosp/AndroidManifest.xml"
         }
 
+        steam {
+            manifest.srcFile "src/steam/AndroidManifest.xml"
+            // The null-safe copy of GeckoView's Clipboard class (see STEAM.md). Only needed with
+            // the prebuilt GeckoView AAR; a locally built GeckoView carries the fix itself.
+            if (!gradle.hasProperty('localProperties.dependencySubstitutions.geckoviewTopsrcdir')) {
+                java.srcDirs += 'src/steam/geckoview-shadow'
+            }
+        }
+
         noapi {
             java.srcDirs = [
                     'src/noapi/java'
@@ -685,6 +705,7 @@ dependencies {
     lynxImplementation libs.openxrloader10
     spacesImplementation libs.openxrloader10
     aospImplementation libs.openxrloader10
+    steamImplementation libs.openxrloader10
     hvrImplementation libs.openxrloader10
 
     // Testing
@@ -833,5 +854,74 @@ android.applicationVariants.configureEach { variant ->
     // value so that this is visible from inside the app.
     if (variant.buildType.name == "debug") {
         variant.resValue "string", "app_name", variant.mergedFlavor.resValues.get("string/app_name").value + " (Dev)"
+    }
+}
+
+// Steam flavor: Valve's Lepton runtime has no system clipboard service, and GeckoView's
+// org.mozilla.gecko.Clipboard crashes Gecko on the resulting null ClipboardManager. Steam
+// variants replace that class with a null-safe copy (app/src/steam/java/org/mozilla/gecko/), so the
+// original must be removed from the GeckoView library first. This artifact transform does that,
+// and only for configurations that request the attribute below, i.e. the steam variants.
+abstract class StripGeckoViewClipboard implements org.gradle.api.artifacts.transform.TransformAction<org.gradle.api.artifacts.transform.TransformParameters.None> {
+    @org.gradle.api.artifacts.transform.InputArtifact
+    abstract org.gradle.api.provider.Provider<org.gradle.api.file.FileSystemLocation> getInputArtifact()
+
+    @Override
+    void transform(org.gradle.api.artifacts.transform.TransformOutputs outputs) {
+        File input = inputArtifact.get().asFile
+        if (!input.name.startsWith("geckoview")) {
+            outputs.file(input)
+            return
+        }
+        File output = outputs.file(input.name)
+        new java.util.zip.ZipInputStream(new FileInputStream(input)).withCloseable { zin ->
+            new java.util.zip.ZipOutputStream(new FileOutputStream(output)).withCloseable { zout ->
+                java.util.zip.ZipEntry entry
+                while ((entry = zin.nextEntry) != null) {
+                    zout.putNextEntry(new java.util.zip.ZipEntry(entry.name))
+                    if (entry.name == "classes.jar") {
+                        zout.write(stripClipboard(zin.readAllBytes()))
+                    } else {
+                        zin.transferTo(zout)
+                    }
+                    zout.closeEntry()
+                }
+            }
+        }
+    }
+
+    static byte[] stripClipboard(byte[] jar) {
+        def buffer = new ByteArrayOutputStream()
+        new java.util.zip.ZipInputStream(new ByteArrayInputStream(jar)).withCloseable { zin ->
+            new java.util.zip.ZipOutputStream(buffer).withCloseable { zout ->
+                java.util.zip.ZipEntry entry
+                while ((entry = zin.nextEntry) != null) {
+                    if (entry.name == "org/mozilla/gecko/Clipboard.class"
+                            || entry.name.startsWith("org/mozilla/gecko/Clipboard\$")) {
+                        continue
+                    }
+                    zout.putNextEntry(new java.util.zip.ZipEntry(entry.name))
+                    zin.transferTo(zout)
+                    zout.closeEntry()
+                }
+            }
+        }
+        return buffer.toByteArray()
+    }
+}
+
+def geckoviewClipboardStripped = org.gradle.api.attributes.Attribute.of("geckoviewClipboardStripped", Boolean)
+def artifactType = org.gradle.api.attributes.Attribute.of("artifactType", String)
+if (!gradle.hasProperty('localProperties.dependencySubstitutions.geckoviewTopsrcdir')) dependencies {
+    attributesSchema { attribute(geckoviewClipboardStripped) }
+    artifactTypes.maybeCreate("aar").attributes.attribute(geckoviewClipboardStripped, false)
+    registerTransform(StripGeckoViewClipboard) {
+        from.attribute(artifactType, "aar").attribute(geckoviewClipboardStripped, false)
+        to.attribute(artifactType, "aar").attribute(geckoviewClipboardStripped, true)
+    }
+}
+if (!gradle.hasProperty('localProperties.dependencySubstitutions.geckoviewTopsrcdir')) configurations.configureEach {
+    if (name.startsWith("steam")) {
+        attributes.attribute(geckoviewClipboardStripped, true)
     }
 }
