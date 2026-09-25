@@ -207,9 +207,14 @@ public class RuntimeImpl implements WRuntime {
         DeviceUtils.updateDeviceSpecificUserAgentSwitch(context);
         LibraryLoader.getInstance().ensureInitialized();
 
+        // Steam Frame (Lepton): the runtime's uid/gid namespace stops at 65536, so Android's
+        // isolated-process services (SandboxedProcessService*) die in setresgid() before they
+        // attach, and Chromium on Android does not allow unsandboxed renderers. Run everything in
+        // the browser process instead.
+        boolean singleProcess = BuildConfig.FLAVOR_platform.equals("steam");
         BrowserStartupController.getInstance().startBrowserProcessesAsync(
-                LibraryProcessType.PROCESS_BROWSER, true /* startGpuProcess */, false /* startMinimalBrowser */,
-                false /* singleProcess */, false /* scheduleFlushStartupTasks */,
+                LibraryProcessType.PROCESS_BROWSER, !singleProcess /* startGpuProcess */, false /* startMinimalBrowser */,
+                singleProcess, false /* scheduleFlushStartupTasks */,
                 new BrowserStartupController.StartupCallback() {
                     @Override
                     public void onSuccess(BrowserStartupController.StartupMetrics metrics) {
