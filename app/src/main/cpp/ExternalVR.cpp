@@ -283,7 +283,9 @@ mozilla::gfx::VRControllerType GetVRControllerTypeByDevice(device::DeviceType aT
     case device::UnknownType:
     default:
       result = mozilla::gfx::VRControllerType::_empty;
-#ifndef NOAPI
+      // STEAM: the Steam Frame controllers have no mapping yet and use the generic
+      // khr/simple_controller fallback, whose device type is UnknownType.
+#if !defined(NOAPI) && !defined(STEAM)
       assert(!"Unknown controller type.");
 #endif
       break;

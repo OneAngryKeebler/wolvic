@@ -379,6 +379,8 @@ struct DeviceDelegateOpenXR::State {
     CHECK_XRCMD(xrEnumerateSwapchainFormats(session, (uint32_t)swapchainFormats.size(), &swapchainFormatCount,
                                             swapchainFormats.data()));
     VRB_LOG("OpenXR Available color formats: %d", swapchainFormatCount);
+    for (int64_t format : swapchainFormats)
+      VRB_LOG("OpenXR   color format 0x%llx", (unsigned long long)format);
   }
 
   bool SupportsColorFormat(int64_t aColorFormat) {
@@ -513,7 +515,7 @@ struct DeviceDelegateOpenXR::State {
   }
 
   XrSwapchainCreateInfo GetSwapChainCreateInfo(uint32_t w = 0, uint32_t h = 0) {
-#if OCULUSVR || PFDMXR
+#if OCULUSVR || PFDMXR || STEAM
     const int64_t colorFormat = GL_SRGB8_ALPHA8;
 #else
     const int64_t colorFormat = GL_RGBA8;
@@ -774,7 +776,15 @@ struct DeviceDelegateOpenXR::State {
 
     float selectedRefreshRate = selectValidRefreshRate(suggestedRefreshRate);
     VRB_DEBUG("OpenXR setting refresh rate to %.0fhz", selectedRefreshRate);
+#if STEAM
+    // SteamVR/OpenXR on the Steam Frame advertises a single refresh rate and then rejects a
+    // request for it with XR_ERROR_DISPLAY_REFRESH_RATE_UNSUPPORTED_FB. Not worth aborting over.
+    XrResult result = OpenXRExtensions::sXrRequestDisplayRefreshRateFB(session, selectedRefreshRate);
+    if (XR_FAILED(result))
+      VRB_WARN("OpenXR runtime rejected refresh rate %.0fhz (%d)", selectedRefreshRate, result);
+#else
     CHECK_XRCMD(OpenXRExtensions::sXrRequestDisplayRefreshRateFB(session, selectedRefreshRate));
+#endif
   }
 
   void Shutdown() {
@@ -1079,7 +1089,7 @@ DeviceDelegateOpenXR::StartFrame(const FramePrediction aPrediction) {
     return;
   }
 
-#if OCULUSVR || PICOXR || PFDMXR
+#if OCULUSVR || PICOXR || PFDMXR || STEAM
   // Fix brigthness issue.
   glDisable(GL_FRAMEBUFFER_SRGB_EXT);
 #endif
