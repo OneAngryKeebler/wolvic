@@ -150,3 +150,4 @@ Restart Wolvic XR and close and re-open the WebIDE page.
 - You can use `adb shell setprop debug.oculus.enableVideoCapture 1` to record a video on the Oculus Go. Remember to run `adb shell setprop debug.oculus.enableVideoCapture 0` to stop recording the video.
     - You can also record videos on the Oculus Go by exiting to the system library, and from the Oculus tray menu (toggle with the Oculus button on the controller): **`Sharing > Record Video`**
 - You can set `disableCrashRestart=true` in the gradle `user.properties` to disable app relaunch on crash.
+
